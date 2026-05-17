@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>🎣 Deep Sea Fisher</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a1628;color:#e0f0ff;font-family:'Segoe UI',sans-serif;overflow:hidden;height:100vh;touch-action:none}
+canvas{display:block}
+.ui{position:absolute;top:10px;left:10px;right:10px;display:flex;justify-content:space-between;z-index:10;pointer-events:none}
+.ui>*{pointer-events:auto}
+.panel{background:rgba(10,30,60,.85);border:1px solid #1e4d8c;border-radius:12px;padding:8px 14px;backdrop-filter:blur(8px)}
+.stats{display:flex;gap:16px;font-size:14px}
+.stat{display:flex;align-items:center;gap:6px}
+.stat .icon{font-size:18px}
+.stat .val{font-weight:700;color:#4ecdc4}
+.gold{color:#ffd700}
+.score{color:#4ecdc4}
+.rod{color:#ff6b6b}
+.controls{position:absolute;bottom:20px;left:0;right:0;display:flex;justify-content:center;gap:12px;z-index:10;flex-wrap:wrap;padding:0 10px}
+.btn{background:linear-gradient(135deg,#1e5799,#0f3460);border:2px solid #1e90ff;color:#fff;padding:12px 24px;border-radius:25px;font-size:15px;font-weight:700;cursor:pointer;transition:all .2s;text-transform:uppercase;letter-spacing:1px}
+.btn:active{transform:scale(.95);background:linear-gradient(135deg,#2e6db9,#1f4470)}
+.btn.upgrade{background:linear-gradient(135deg,#8b5cf6,#6d28d9);border-color:#a78bfa}
+.btn.gold-btn{background:linear-gradient(135deg,#d4a017,#b8860b);border-color:#ffd700}
+.cast-area{position:absolute;top:0;left:0;right:0;bottom:0;z-index:5}
+.cast-hint{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:24px;color:rgba(255,255,255,.4);pointer-events:none;animation:pulse 2s infinite}
+@keyframes pulse{0%,100%{opacity:.3}50%{opacity:.7}}
+.catch-popup{position:absolute;top:30%;left:50%;transform:translate(-50%,-50%);font-size:22px;font-weight:800;pointer-events:none;animation:popUp 1.5s forwards;z-index:20;text-shadow:0 0 20px rgba(255,255,255,.5)}
+@keyframes popUp{0%{opacity:1;transform:translate(-50%,-50%) scale(.5)}50%{opacity:1;transform:translate(-50%,-80%) scale(1.3)}100%{opacity:0;transform:translate(-50%,-120%) scale(1)}}
+.leaderboard{position:absolute;top:60px;right:10px;background:rgba(10,30,60,.9);border:1px solid #1e4d8c;border-radius:12px;padding:12px;min-width:180px;z-index:10;pointer-events:none;max-height:200px;overflow-y:auto}
+.leaderboard h3{font-size:13px;color:#4ecdc4;margin-bottom:6px;text-align:center}
+.lb-row{display:flex;justify-content:space-between;font-size:12px;padding:3px 0;border-bottom:1px solid rgba(255,255,255,.05)}
+.lb-row .name{color:#a0c0e0}
+.lb-row .s{color:#ffd700}
+.modal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.7);z-index:100;display:flex;align-items:center;justify-content:center}
+.modal-content{background:#0f2648;border:2px solid #1e90ff;border-radius:16px;padding:24px;text-align:center;max-width:320px;width:90%}
+.modal h2{color:#4ecdc4;margin-bottom:12px}
+.modal p{color:#a0c0e0;margin-bottom:16px;font-size:14px}
+.modal .btn{margin:4px}
+.hidden{display:none}
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div class="ui">
+  <div class="panel stats">
+    <div class="stat gold"><span class="icon">🪙</span><span class="val" id="gold">0</span></div>
+    <div class="stat score"><span class="icon">🐟</span><span class="val" id="score">0</span></div>
+    <div class="stat rod"><span class="icon">🎣</span><span class="val" id="rodLvl">Wooden</span></div>
+  </div>
+</div>
+
+<div class="leaderboard" id="lb"><h3>🏆 Leaderboard</h3><div id="lbList"></div></div>
+
+<div class="controls">
+  <button class="btn upgrade" id="btnUpgrade">⬆ Upgrade Rod (<span id="upgCost">50</span>🪙)</button>
+  <button class="btn gold-btn" id="btnSell">💎 Sell All Fish</button>
+</div>
+
+<div class="cast-area" id="castArea">
+  <div class="cast-hint">🎣 Tap to CAST</div>
+</div>
+
+<div class="modal hidden" id="modal">
+  <div class="modal-content">
+    <h2 id="modalTitle"></h2>
+    <p id="modalMsg"></p>
+    <button class="btn" id="modalBtn">OK</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+// ── Game State ──
+const RODS = [
+  { name: 'Wooden',  color: '#8B4513', power: 1, cost: 0, icon: '🪵' },
+  { name: 'Iron',    color: '#A0A0A0', power: 2, cost: 50, icon: '⚙️' },
+  { name: 'Gold',    color: '#FFD700', power: 3, cost: 150, icon: '🥇' },
+  { name: 'Diamond', color: '#00FFFF', power: 5, cost: 400, icon: '💎' },
+];
+
+const FISH = [
+  { name: 'Sardine',    rarity:'Common',   color:'#7f8c8d', speed:1.5, value:5,   weight:.8, size:14 },
+  { name: 'Clownfish',  rarity:'Common',   color:'#ff6b6b', speed:1.2, value:8,   weight:.7, size:12 },
+  { name: 'Bass',       rarity:'Rare',     color:'#27ae60', speed:1.0, value:25,  weight:1.5, size:20 },
+  { name: 'Angelfish',  rarity:'Rare',     color:'#a29bfe', speed:.9,  value:30,  weight:1.0, size:18 },
+  { name: 'Swordfish',  rarity:'Epic',     color:'#e17055', speed:.7,  value:80,  weight:2.5, size:28 },
+  { name: 'Manta Ray',  rarity:'Epic',     color:'#0984e3', speed:.6,  value:100, weight:3.0, size:32 },
+  { name: 'Dragonfish', rarity:'Legendary',color:'#fd79a8', speed:.5,  value:300, weight:3.5, size:36 },
+  { name: 'Gold Koi',   rarity:'Legendary',color:'#f9ca24', speed:.4,  value:500, weight:4.0, size:38 },
+];
+
+let state = {
+  gold: 0, score: 0, rodLevel: 0,
+  fish: [], bubbles: [], particles: [],
+  line: null, catchTimer: 0, canCast: true,
+  casting: false, reeling: false,
+};
+
+// ── Audio ──
+const actx = new (window.AudioContext||window.webkitAudioContext)();
+function playTone(freq, dur, type='sine', vol=.15) {
+  const o = actx.createOscillator();
+  const g = actx.createGain();
+  o.type = type; o.frequency.value = freq;
+  g.gain.setValueAtTime(vol, actx.currentTime);
+  g.gain.exponentialRampToValueAtTime(.001, actx.currentTime+dur);
+  o.connect(g); g.connect(actx.destination);
+  o.start(); o.stop(actx.currentTime+dur);
+}
+function sfx(s) {
+  switch(s){
+    case 'cast': playTone(200,.15,'triangle',.1); break;
+    case 'bite': playTone(600,.1,'square',.08); playTone(800,.05,'square',.05); break;
+    case 'catch': playTone(800,.1,'sine',.12); playTone(1000,.08,'sine',.1); playTone(1200,.15,'sine',.08); break;
+    case 'upgrade': playTone(400,.1,'triangle',.1); playTone(600,.08,'triangle',.1); playTone(800,.15,'triangle',.1); break;
+    case 'sell': playTone(500,.05,'sine',.1); playTone(700,.1,'sine',.08); break;
+    case 'miss': playTone(100,.3,'sawtooth',.05); break;
+  }
+}
+
+// ── Fish AI ──
+function spawnFish() {
+  if (state.fish.length >= 15) return;
+  const rarityRand = Math.random();
+  let pool;
+  if (rarityRand < .5) pool = FISH.filter(f=>f.rarity==='Common');
+  else if (rarityRand < .8) pool = FISH.filter(f=>f.rarity==='Rare');
+  else if (rarityRand < .95) pool = FISH.filter(f=>f.rarity==='Epic');
+  else pool = FISH.filter(f=>f.rarity==='Legendary');
+  
+  const proto = pool[Math.floor(Math.random()*pool.length)];
+  const dir = Math.random() > .5 ? 1 : -1;
+  state.fish.push({
+    ...proto, size: proto.size*(.8+Math.random()*.4),
+    x: dir>0 ? -40 : canvas.width+40,
+    y: 80+Math.random()*(canvas.height-200),
+    vx: proto.speed*(.7+Math.random()*.6)*dir,
+    vy: (Math.random()-.5)*.5,
+    phase: Math.random()*Math.PI*2,
+    wavy: .3+Math.random()*.5,
+  });
+}
+function moveFish() {
+  state.fish.forEach(f=>{
+    f.x += f.vx;
+    f.y += f.vy + Math.sin(f.phase += .03)*f.wavy;
+    if (f.y < 70) f.vy = Math.abs(f.vy);
+    if (f.y > canvas.height-50) f.vy = -Math.abs(f.vy);
+  });
+  state.fish = state.fish.filter(f=>f.x>-60 && f.x<canvas.width+60 && f.y>30 && f.y<canvas.height+30);
+}
+
+// ── Fishing Line ──
+let lineTarget = null, lineProgress = 0, fishFight = 0;
+function castRod() {
+  if (!state.canCast || state.casting) return;
+  state.canCast = false; state.casting = true;
+  sfx('cast');
+  state.line = { x: canvas.width/2, y: canvas.height-10, targetX: canvas.width/2, targetY: 150, progress: 0 };
+  document.querySelector('.cast-hint').style.display = 'none';
+}
+function reelIn() {
+  if (!state.line) return;
+  state.line.progress += .03 * RODS[state.rodLevel].power;
+  if (state.line.progress >= 1) {
+    state.line = null;
+    checkCatch();
+    setTimeout(()=>{ state.casting=false; state.canCast=true; document.querySelector('.cast-hint').style.display='block'; }, 800);
+  }
+}
+function checkCatch() {
+  const nearby = state.fish.filter(f=>{
+    const dx = f.x - canvas.width/2;
+    const dy = f.y - 200;
+    return Math.sqrt(dx*dx+dy*dy) < 80;
+  });
+  if (nearby.length > 0) {
+    const caught = nearby[Math.floor(Math.random()*nearby.length)];
+    const bonus = Math.floor(Math.random()*caught.value*.3) + caught.value;
+    state.gold += bonus;
+    state.score++;
+    sfx('catch');
+    showPopup(caught.name, caught.rarity, bonus, caught.x, caught.y);
+    state.particles.push(...Array(15).fill().map(()=>({
+      x: caught.x, y: caught.y,
+      vx: (Math.random()-.5)*5, vy: (Math.random()-.5)*5,
+      life: 1, color: caught.color
+    })));
+    state.fish = state.fish.filter(f=>f!==caught);
+    saveGame();
+    updateLeaderboard();
+  } else {
+    sfx('miss');
+    showPopup('Miss!', 'Common', 0, canvas.width/2, 200);
+  }
+}
+
+// ── Popup ──
+function showPopup(name, rarity, value, x, y) {
+  const el = document.createElement('div');
+  el.className = 'catch-popup';
+  const colors = { Common:'#95a5a6', Rare:'#3498db', Epic:'#9b59b6', Legendary:'#e74c3c' };
+  el.style.color = colors[rarity] || '#fff';
+  el.style.left = x+'px';
+  el.style.top = Math.max(60, y-20)+'px';
+  el.textContent = value>0 ? `🎣 ${name}! +${value}🪙` : '💨 Miss!';
+  document.body.appendChild(el);
+  setTimeout(()=>el.remove(), 1500);
+}
+
+// ── Render ──
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  
+  // Water gradient
+  const grad = ctx.createLinearGradient(0,0,0,canvas.height);
+  grad.addColorStop(0,'#0a2a4a'); grad.addColorStop(.5,'#0d3d6e'); grad.addColorStop(1,'#041020');
+  ctx.fillStyle = grad; ctx.fillRect(0,0,canvas.width,canvas.height);
+  
+  // Seaweed
+  for (let i=0;i<8;i++){
+    const sx = (i+1)*canvas.width/9;
+    const h = 40+Math.random()*60;
+    ctx.strokeStyle = `rgba(20,${100+i*10},${30+i*5},.4)`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(sx, canvas.height-10);
+    ctx.quadraticCurveTo(sx+15, canvas.height-h, sx, canvas.height-h*1.5);
+    ctx.stroke();
+  }
+  
+  // Bubbles
+  state.bubbles.push(...Array(2).fill().map(()=>({x:Math.random()*canvas.width,y:canvas.height+5,r:2+Math.random()*4,speed:.5+Math.random()})));
+  state.bubbles.forEach(b=>{b.y-=b.speed;b.x+=Math.sin(b.y*.02)*.3});
+  state.bubbles = state.bubbles.filter(b=>b.y>-10);
+  state.bubbles.forEach(b=>{
+    ctx.fillStyle=`rgba(150,200,255,${.1+.1*Math.random()})`;
+    ctx.beginPath(); ctx.arc(b.x,b.y,b.r,0,Math.PI*2); ctx.fill();
+  });
+  
+  // Fish
+  state.fish.forEach(f=>{
+    ctx.save(); ctx.translate(f.x, f.y);
+    const scaleX = f.vx > 0 ? 1 : -1;
+    ctx.scale(scaleX, 1);
+    
+    // Body
+    ctx.fillStyle = f.color;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, f.size, f.size*.45, 0, 0, Math.PI*2);
+    ctx.fill();
+    
+    // Tail
+    ctx.beginPath();
+    ctx.moveTo(-f.size*.8, -f.size*.3);
+    ctx.lineTo(-f.size*1.2, -f.size*.6);
+    ctx.lineTo(-f.size*1.2, f.size*.6);
+    ctx.lineTo(-f.size*.8, f.size*.3);
+    ctx.fill();
+    
+    // Eye
+    ctx.fillStyle = '#fff';
+    ctx.beginPath(); ctx.arc(f.size*.3, -f.size*.08, f.size*.2, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.beginPath(); ctx.arc(f.size*.35, -f.size*.08, f.size*.1, 0, Math.PI*2); ctx.fill();
+    
+    // Rarity glow
+    if (f.rarity === 'Legendary') {
+      ctx.shadowColor = '#ffd700'; ctx.shadowBlur = 15;
+      ctx.strokeStyle = 'rgba(255,215,0,.4)';
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.ellipse(0,0,f.size,f.size*.45,0,0,Math.PI*2); ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+    if (f.rarity === 'Epic') {
+      ctx.shadowColor = '#9b59b6'; ctx.shadowBlur = 8;
+      ctx.strokeStyle = 'rgba(155,89,182,.3)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.ellipse(0,0,f.size,f.size*.45,0,0,Math.PI*2); ctx.stroke();
+      ctx.shadowBlur = 0;
+    }
+    
+    ctx.restore();
+  });
+  
+  // Fishing line
+  if (state.line) {
+    const t = state.line.progress;
+    const sx = canvas.width/2, sy = canvas.height-10;
+    const tx = sx, ty = 150 + t*250;
+    
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(tx, ty); ctx.stroke();
+    
+    // Bobber
+    ctx.fillStyle = '#ff4444';
+    ctx.beginPath(); ctx.arc(tx, ty, 6, 0, Math.PI*2); ctx.fill();
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(tx, ty, 8, 0, Math.PI*2); ctx.stroke();
+  }
+  
+  // Particles
+  state.particles = state.particles.filter(p=>(p.life-=.02)>0);
+  state.particles.forEach(p=>{
+    ctx.fillStyle = p.color.replace(')',`,${p.life})`).replace('rgb','rgba');
+    ctx.fillRect(p.x+p.vx, p.y+p.vy, 4, 4);
+    p.vx *= .95; p.vy += .1;
+  });
+}
+
+// ── Upgrade ──
+function upgradeRod() {
+  const next = RODS[state.rodLevel+1];
+  if (!next) return showModal('Max Level!','Diamond rod is the best!');
+  if (state.gold < next.cost) return showModal('Not enough gold!',`Need ${next.cost}🪙, have ${state.gold}🪙`);
+  state.gold -= next.cost;
+  state.rodLevel++;
+  sfx('upgrade');
+  updateUI();
+  showModal('Rod Upgraded!',`${RODS[state.rodLevel].icon} ${RODS[state.rodLevel].name} Rod — Power x${RODS[state.rodLevel].power}`);
+  saveGame();
+}
+
+// ── Sell ──
+function sellAll() {
+  const bonus = state.score * 3 + state.gold;
+  state.gold = bonus;
+  state.score = 0;
+  sfx('sell');
+  showPopup('Sold!', 'Epic', bonus, canvas.width/2, canvas.height/2);
+  updateUI();
+  saveGame();
+}
+
+// ── UI ──
+function updateUI() {
+  document.getElementById('gold').textContent = state.gold;
+  document.getElementById('score').textContent = state.score;
+  document.getElementById('rodLvl').textContent = RODS[state.rodLevel].name;
+  const next = RODS[state.rodLevel+1];
+  document.getElementById('upgCost').textContent = next ? next.cost : 'MAX';
+  document.getElementById('btnUpgrade').textContent = next ? `⬆ Upgrade (${next.cost}🪙)` : '⬆ MAX LEVEL';
+}
+function showModal(title, msg) {
+  document.getElementById('modalTitle').textContent = title;
+  document.getElementById('modalMsg').textContent = msg;
+  document.getElementById('modal').classList.remove('hidden');
+}
+function updateLeaderboard() {
+  const lb = JSON.parse(localStorage.getItem('fisher_lb')||'[]');
+  lb.push({ name: 'You', score: state.score, gold: state.gold, date: new Date().toLocaleDateString() });
+  lb.sort((a,b)=>b.gold-a.gold);
+  const top = lb.slice(0,8);
+  localStorage.setItem('fisher_lb', JSON.stringify(top));
+  renderLeaderboard();
+}
+function renderLeaderboard() {
+  const lb = JSON.parse(localStorage.getItem('fisher_lb')||'[]');
+  document.getElementById('lbList').innerHTML = lb.map((e,i)=>`<div class="lb-row"><span class="name">#${i+1} ${e.name}</span><span class="s">${e.gold}🪙</span></div>`).join('');
+}
+
+function saveGame() {
+  localStorage.setItem('fisher_save', JSON.stringify({gold:state.gold,score:state.score,rodLevel:state.rodLevel}));
+}
+function loadGame() {
+  const d = JSON.parse(localStorage.getItem('fisher_save')||'{}');
+  state.gold = d.gold||0; state.score = d.score||0; state.rodLevel = d.rodLevel||0;
+  updateUI(); renderLeaderboard();
+}
+
+// ── Resize ──
+function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+window.addEventListener('resize', resize);
+
+// ── Input ──
+const castArea = document.getElementById('castArea');
+castArea.addEventListener('pointerdown', e => { e.preventDefault(); castRod(); });
+castArea.addEventListener('pointerup', e => { e.preventDefault(); state.canCast = false; });
+castArea.addEventListener('pointermove', e => {
+  if (state.casting && state.line) reelIn();
+});
+
+document.getElementById('btnUpgrade').addEventListener('click', upgradeRod);
+document.getElementById('btnSell').addEventListener('click', sellAll);
+document.getElementById('modalBtn').addEventListener('click', ()=>{ document.getElementById('modal').classList.add('hidden'); });
+
+// ── Loop ──
+function loop() {
+  if (Math.random()<.02) spawnFish();
+  moveFish();
+  draw();
+  requestAnimationFrame(loop);
+}
+
+resize();
+loadGame();
+loop();
+sfx('cast');
+</script>
+</body>
+</html>
