@@ -590,6 +590,7 @@ let state = {
   energy: 10,
   energyMax: 10,
   muted: false,
+  lastDailyReset: '', // YYYY-MM-DD - tracks when energy was last refilled
 };
 
 const SAVE_KEY = 'reel_frenzy_v1';
@@ -604,6 +605,41 @@ function loadGame() {
   } catch(e) {}
   state.energyMax = RODS[state.rodIdx].energyMax;
   if (state.energy > state.energyMax) state.energy = state.energyMax;
+  // Daily reset check on load
+  checkDailyReset();
+}
+
+function todayStr() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+function checkDailyReset() {
+  const today = todayStr();
+  if (state.lastDailyReset !== today) {
+    const wasFirstTime = !state.lastDailyReset;
+    state.energy = state.energyMax;
+    state.lastDailyReset = today;
+    saveGame();
+    if (!wasFirstTime) {
+      // Show daily refill notification (if UI is ready)
+      setTimeout(() => showToast('☀️ Daily energy refilled! Good luck angler!', 3000), 600);
+    }
+  }
+}
+
+function msUntilReset() {
+  const now = new Date();
+  const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0, 0);
+  return tomorrow - now;
+}
+
+function formatCountdown(ms) {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
 }
 
 function saveGame() {
@@ -980,7 +1016,7 @@ function showToast(msg, ms = 1800) {
 function startCharge() {
   const z = ZONES[state.zoneIdx];
   if (state.energy < z.energyCost) {
-    showToast('⚡ Not enough energy! Wait or change zone.');
+    showToast(`⚡ Out of energy! Refills in ${formatCountdown(msUntilReset())}`, 2800);
     return;
   }
   phase = PHASE.CHARGING;
@@ -1356,22 +1392,26 @@ function updateUI() {
 function updateEnergyUI() {
   const pct = (state.energy / state.energyMax) * 100;
   document.getElementById('energy-fill').style.width = pct + '%';
-  document.getElementById('energy-text').textContent = `${Math.floor(state.energy)}/${state.energyMax}`;
+  const energyText = document.getElementById('energy-text');
+  if (state.energy <= 0) {
+    energyText.textContent = `0/${state.energyMax} · ${formatCountdown(msUntilReset())}`;
+    energyText.style.color = '#ff9f43';
+  } else {
+    energyText.textContent = `${Math.floor(state.energy)}/${state.energyMax}`;
+    energyText.style.color = '#ffe066';
+  }
 }
 
-// Energy regen every X seconds
-let energyAccum = 0;
-function regenEnergy(dt) {
-  energyAccum += dt;
-  // 1 energy every 3 seconds
-  if (energyAccum > 3) {
-    energyAccum = 0;
-    if (state.energy < state.energyMax) {
-      state.energy = Math.min(state.energyMax, state.energy + 1);
-      updateEnergyUI();
-      saveGame();
-    }
+// Check for daily reset every 30 seconds (handles users who keep tab open past midnight)
+let dailyCheckAccum = 0;
+function tickDailyReset(dt) {
+  dailyCheckAccum += dt;
+  if (dailyCheckAccum > 30) {
+    dailyCheckAccum = 0;
+    checkDailyReset();
   }
+  // Live countdown when out of energy
+  if (state.energy <= 0) updateEnergyUI();
 }
 
 // ============================================================
@@ -1611,7 +1651,7 @@ function loop() {
   updateParticles();
   drawParticles();
 
-  regenEnergy(dt);
+  tickDailyReset(dt);
 
   requestAnimationFrame(loop);
 }

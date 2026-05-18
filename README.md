@@ -17,7 +17,7 @@ Cast your line, hook your catch, reel it in, then upgrade your gear and explore 
 - 🐟 **17 fish species** across 6 rarity tiers (Common → Mythic)
 - 🌊 **5 fishing zones** with distinct palettes and rarity boosts (Pond, Lake, Reef, Trench, Abyss)
 - 🎣 **6 fishing rods** to upgrade — each improves power, energy, reel speed, and the size of the catch zone
-- ⚡ **Energy system** — different zones cost more energy, regenerates over time
+- ⚡ **Energy system** — different zones cost more energy. Energy fully refills once per day at midnight (local time).
 - 🎒 **Inventory & bulk-sell bonus** — collect species and cash out with a 10% bonus
 - 💾 **Auto-save** — progress persists in `localStorage`
 - 🎵 **Procedural audio** via WebAudio API (no asset downloads)
