@@ -1,11 +1,9 @@
-===FILE: index.html===
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Deep Sea Fishing - Cast Your Line</title>
+    <title>🎣 Deep Sea Fishing - Cast Your Line</title>
     <style>
         * {
             margin: 0;
@@ -800,4 +798,30 @@
             } else {
                 leaderboard.forEach((entry, index) => {
                     const item = document.createElement('div');
-                    item.className = 'leaderboard-entry' + (index < 3 
+                    item.className = 'leaderboard-entry' + (index < 3 ? ' top3' : '');
+                    item.innerHTML = `
+                        <span class="rank">#${index + 1}</span>
+                        <span class="player-name">${entry.name}</span>
+                        <span class="player-gold">${entry.gold} 🪙</span>
+                    `;
+                    list.appendChild(item);
+                });
+            }
+            
+            modal.style.display = 'flex';
+        }
+
+        function closeLeaderboard() {
+            document.getElementById('leaderboardModal').style.display = 'none';
+        }
+
+        // Event listeners
+        document.getElementById('shopBtn').addEventListener('click', openShop);
+        document.getElementById('leaderboardBtn').addEventListener('click', openLeaderboard);
+
+        // Start game
+        loadGame();
+        gameLoop();
+    </script>
+</body>
+</html>
